@@ -1,0 +1,9 @@
+services:
+  immich-calendar-album:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    # Alternatively, override individual variables here:
+    # environment:
+    #   - IMMICH_URL=https://immich.example.com
+    #   - TZ=Europe/Berlin

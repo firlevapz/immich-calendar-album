@@ -1,0 +1,23 @@
+[project]
+name = "immich-calendar-album"
+version = "0.1.0"
+description = "Automatically create and populate Immich albums from CalDAV calendar events"
+authors = [
+    { name = "Fabian Helm", email = "firlevapz@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "caldav>=3.2.1",
+    "httpx>=0.28.1",
+    "icalendar>=7.1.2",
+    "pydantic-settings>=2",
+    "python-dateutil>=2.9.0.post0",
+    "vobject>=0.9.9",
+]
+
+[project.scripts]
+immich-calendar-album = "immich_calendar_album.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
