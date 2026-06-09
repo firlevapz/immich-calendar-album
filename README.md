@@ -1,5 +1,9 @@
 # immich-calendar-album
 
+[![Release Please](https://github.com/youruser/immich-calendar-album/actions/workflows/release-please.yml/badge.svg)](https://github.com/youruser/immich-calendar-album/actions/workflows/release-please.yml)
+[![Docker](https://github.com/youruser/immich-calendar-album/actions/workflows/docker.yml/badge.svg)](https://github.com/youruser/immich-calendar-album/actions/workflows/docker.yml)
+[![GitHub release](https://img.shields.io/github/v/release/youruser/immich-calendar-album)](https://github.com/youruser/immich-calendar-album/releases)
+
 Automatically creates albums in [Immich](https://immich.app) based on events fetched from a CalDAV calendar, then assigns your recent unorganised photos to the matching album.
 
 ## How it works
@@ -157,3 +161,36 @@ uv sync
 # Run against a real or mock environment (needs a populated .env)
 uv run python -m immich_calendar_album
 ```
+
+---
+
+## Releases and versioning
+
+Versioning follows [Semantic Versioning](https://semver.org). Releases are fully automated via [Release Please](https://github.com/googleapis/release-please):
+
+1. Commit to `main` using [Conventional Commits](https://www.conventionalcommits.org):
+
+   | Prefix | Effect |
+   |---|---|
+   | `fix: …` | Patch release (`0.1.0` → `0.1.1`) |
+   | `feat: …` | Minor release (`0.1.0` → `0.2.0`) |
+   | `feat!: …` or `BREAKING CHANGE:` footer | Major release (`0.1.0` → `1.0.0`) |
+   | `chore:`, `docs:`, `refactor:`, … | No release |
+
+2. Release Please opens a **Release PR** that bumps `pyproject.toml`, writes `CHANGELOG.md`, and updates `.release-please-manifest.json`.
+
+3. Merging the Release PR creates a **GitHub Release** with a git tag (`v1.2.3`).
+
+4. The Docker workflow immediately builds and pushes a versioned image to GHCR.
+
+### Docker image
+
+```bash
+# Latest build from main
+docker pull ghcr.io/youruser/immich-calendar-album:latest
+
+# Specific release
+docker pull ghcr.io/youruser/immich-calendar-album:1.2.3
+```
+
+Images are built for `linux/amd64` and `linux/arm64`.

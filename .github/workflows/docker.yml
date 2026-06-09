@@ -1,0 +1,80 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main        # always publish :latest
+  pull_request:
+    branches:
+      - main        # validate the build on PRs (no push)
+  release:
+    types:
+      - published   # publish versioned tags when release-please cuts a release
+
+permissions:
+  contents: read
+  packages: write   # push to ghcr.io
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE:    ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------
+      # Generate image tags + OCI labels
+      # ----------------------------------------------------------------
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Tagging strategy:
+          #   push to main  → :latest
+          #   release       → :latest  +  :1.2.3  +  :1.2
+          tags: |
+            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=immich-calendar-album
+            org.opencontainers.image.description=Automatically create and populate Immich albums from CalDAV calendar events
+
+      # ----------------------------------------------------------------
+      # Multi-platform builder
+      # ----------------------------------------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ----------------------------------------------------------------
+      # Authenticate (skipped on PRs – no push)
+      # ----------------------------------------------------------------
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------------
+      # Build (and push when not a PR)
+      # ----------------------------------------------------------------
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context:   .
+          platforms: linux/amd64,linux/arm64
+          push:      ${{ github.event_name != 'pull_request' }}
+          tags:      ${{ steps.meta.outputs.tags }}
+          labels:    ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
