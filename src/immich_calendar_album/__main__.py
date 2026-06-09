@@ -17,7 +17,7 @@ from typing import NoReturn
 
 from immich_calendar_album.calendar import CalendarClient
 from immich_calendar_album.config import Config
-from immich_calendar_album.immich import ImmichAlbum, ImmichClient
+from immich_calendar_album.immich import ImmichAlbum, ImmichClient, ImmichPermissionError
 from immich_calendar_album.matcher import match_assets
 
 log = logging.getLogger(__name__)
@@ -93,8 +93,17 @@ def run_once(cfg: Config) -> None:
                         share_url,
                     )
 
-        # --- Step 3: fetch unassigned assets -----------------------------
-        assets = list(immich.iter_unassigned_assets())
+        # --- Steps 3-5: fetch, match, and assign unassigned assets -------
+        try:
+            assets = list(immich.iter_unassigned_assets())
+        except ImmichPermissionError as exc:
+            log.warning(
+                "Asset assignment skipped — API key lacks 'asset.read' scope.\n%s",
+                exc,
+            )
+            log.info("Sync cycle complete (asset steps skipped)")
+            return
+
         log.info("Found %d unassigned asset(s)", len(assets))
 
         if not assets:

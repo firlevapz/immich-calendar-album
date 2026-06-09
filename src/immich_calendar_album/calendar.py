@@ -102,8 +102,20 @@ class CalendarClient:
             log.warning("Failed to fetch event %r for write-back: %s", event.href, exc)
             return False
 
-        if share_url in raw:
-            log.debug("Share URL already present in event %r – skipping", event.summary)
+        # Check the *parsed* description value rather than the raw iCal text.
+        # Raw iCal applies RFC 5545 line-folding (wraps at 75 chars with \r\n +
+        # space), so a long URL never appears as a contiguous string and a
+        # plain `share_url in raw` check always misses it.
+        # We also check for any share link from this Immich instance, not just
+        # the exact URL, so a stale link from a previous key doesn't cause
+        # another append.
+        share_base = self._cfg.immich_base_url.rstrip("/") + "/share/"
+        desc_value = self._get_description_value(raw)
+        if share_base in desc_value:
+            log.debug(
+                "An Immich share link is already present in event %r – skipping",
+                event.summary,
+            )
             return False
 
         updated = self._append_to_description(raw, share_url)
@@ -265,6 +277,21 @@ class CalendarClient:
         with httpx.Client(follow_redirects=True) as client:
             resp = client.put(url, content=data.encode(), headers=self._http_headers(), auth=self._http_auth(), timeout=15)
             resp.raise_for_status()
+
+    @staticmethod
+    def _get_description_value(raw_ical: str) -> str:
+        """Return the DESCRIPTION value from a raw iCal string, or an empty string.
+
+        vobject automatically unfolds RFC 5545 line-folded text, so the returned
+        string is safe to use for substring searches.
+        """
+        try:
+            cal = vobject.readOne(raw_ical)
+            if hasattr(cal.vevent, "description"):
+                return cal.vevent.description.value or ""
+        except Exception:
+            pass
+        return ""
 
     @staticmethod
     def _append_to_description(raw_ical: str, share_url: str) -> str | None:

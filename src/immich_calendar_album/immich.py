@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 _PAGE_SIZE = 1000  # assets per page
 
 
+class ImmichPermissionError(Exception):
+    """Raised when the Immich API key is missing a required permission scope."""
+
+
 @dataclass
 class ImmichAlbum:
     id: str
@@ -167,30 +171,45 @@ class ImmichClient:
     # ------------------------------------------------------------------
 
     def iter_unassigned_assets(self) -> Iterator[ImmichAsset]:
-        """Yield all assets that are not part of any album, page by page."""
-        page = 1
-        while True:
-            resp = self._http.get(
-                "/api/assets",
-                params={
-                    "withoutAlbum": "true",
-                    "page": str(page),
-                    "size": str(_PAGE_SIZE),
+        """Yield all assets that are not part of any album, page by page.
+
+        Uses POST /api/search/metadata with isNotInAlbum=true.  Pagination is
+        driven by the ``nextPage`` token returned in each response; when it is
+        absent or null the last page has been reached.
+
+        Raises:
+            ImmichPermissionError: if the API key is missing the ``asset.read``
+                scope.  Callers should catch this and skip asset assignment for
+                the current cycle rather than aborting the whole run.
+        """
+        page: int | None = 1
+        while page is not None:
+            resp = self._http.post(
+                "/api/search/metadata",
+                json={
+                    "isNotInAlbum": True,
+                    "page": page,
+                    "size": _PAGE_SIZE,
                 },
             )
+            if resp.status_code == 403:
+                raise ImmichPermissionError(
+                    "The Immich API key is missing the 'asset.read' permission. "
+                    "Asset matching will be skipped until the key is updated.\n"
+                    "  Fix: In Immich open Profile → API Keys, edit the key and "
+                    "enable the 'asset.read' scope."
+                )
             resp.raise_for_status()
-            items = resp.json()
-            if not items:
-                break
+            data = resp.json()
 
+            items: list[dict[str, Any]] = data.get("assets", {}).get("items", [])
             for item in items:
                 asset = self._parse_asset(item)
                 if asset is not None:
                     yield asset
 
-            if len(items) < _PAGE_SIZE:
-                break
-            page += 1
+            next_raw = data.get("assets", {}).get("nextPage")
+            page = int(next_raw) if next_raw is not None else None
 
     def add_assets_to_album(
         self,

@@ -41,9 +41,9 @@ When multiple events qualify (overlapping windows), the most recent event wins. 
 git clone https://github.com/youruser/immich-calendar-album.git
 cd immich-calendar-album
 
-# 2. Create your env file
-cp .env.example .env
-$EDITOR .env          # fill in Immich URL/key and CalDAV URL/credentials
+# 2. Create your env file (see Configuration below for all variables)
+cp docker-compose.yml .  # already present
+$EDITOR .env             # create .env with your values
 
 # 3. Build and run
 docker compose up --build -d
@@ -56,51 +56,74 @@ docker compose logs -f
 
 ## Configuration
 
-All settings are passed as environment variables (or via `.env`).
+All settings are passed as environment variables. Create a `.env` file next to `docker-compose.yml` and populate it from the template below.
 
-### Required
+```env
+# ---- Immich ---------------------------------------------------------------
+# Base URL of your Immich instance (no trailing slash)
+IMMICH_URL=https://immich.example.com
 
-| Variable | Description |
-|---|---|
-| `IMMICH_URL` | Base URL of your Immich instance, e.g. `https://immich.example.com` |
-| `IMMICH_API_KEY` | Immich API key (Profile → API Keys) |
-| `CALDAV_URL` | CalDAV calendar collection URL **or** a direct `.ics` file URL |
+# Immich API key — create one under Profile → API Keys
+# Required scopes: asset.read, album.read, album.create,
+#                  albumAsset.create, sharedLink.read, sharedLink.create
+IMMICH_API_KEY=your-immich-api-key
 
-### CalDAV authentication
+# ---- CalDAV / WebDAV calendar ---------------------------------------------
+# Full URL to a CalDAV calendar collection or a direct .ics file.
+#
+#   CalDAV (Nextcloud):  https://cloud.example.com/remote.php/dav/calendars/user/personal/
+#   CalDAV (Radicale):   https://cal.example.com/user/calendar/
+#   Plain ICS file:      https://example.com/calendar.ics
+CALDAV_URL=https://cloud.example.com/remote.php/dav/calendars/user/personal/
 
-At least one of the following pairs must be set to enable write-back:
+# Basic-auth credentials (leave empty for unauthenticated / read-only access).
+# Write-back of Immich share links is disabled when no credentials are set.
+CALDAV_USERNAME=your-caldav-username
+CALDAV_PASSWORD=your-caldav-password
 
-| Variable | Description |
-|---|---|
-| `CALDAV_USERNAME` | Basic-auth username |
-| `CALDAV_PASSWORD` | Basic-auth password |
-| `CALDAV_API_KEY` | Bearer-token API key (alternative to username/password) |
+# Bearer-token API key — alternative to username/password for servers that
+# support token auth. Set this instead of (or in addition to) the pair above.
+# CALDAV_API_KEY=
 
-Leave all three empty for unauthenticated (read-only) access. Write-back is automatically disabled in that case.
+# ---- Behaviour ------------------------------------------------------------
+# How many days back to look for calendar events
+LOOKBACK_DAYS=7
 
-### Behaviour
+# Max days *after* an event's start date a photo may still be assigned to it.
+# A photo taken on the same day as the event, or up to this many days later,
+# will be placed in that event's album.
+PHOTO_ASSIGN_MAX_DAYS=5
 
-| Variable | Default | Description |
-|---|---|---|
-| `LOOKBACK_DAYS` | `7` | How many days back to search for calendar events |
-| `PHOTO_ASSIGN_MAX_DAYS` | `5` | Max days after an event's start date a photo may still be assigned to it |
-| `SCHEDULE_INTERVAL` | `3600` | Seconds between sync runs |
-| `TZ` | `UTC` | IANA timezone used for all date comparisons (e.g. `Europe/Berlin`) |
+# Seconds between sync runs (3600 = 1 hour)
+SCHEDULE_INTERVAL=3600
 
----
-
-## CalDAV URL examples
-
+# ---- Timezone -------------------------------------------------------------
+# IANA timezone name used to interpret photo capture dates and event dates.
+# Examples: UTC  Europe/Berlin  America/New_York  Asia/Tokyo
+TZ=UTC
 ```
-# Nextcloud calendar collection
-https://cloud.example.com/remote.php/dav/calendars/USERNAME/CALENDAR-SLUG/
 
-# Radicale
-https://cal.example.com/USERNAME/CALENDAR-SLUG/
+### Variable reference
 
-# Plain ICS export (Google Calendar, iCloud public link, …)
-https://calendar.google.com/calendar/ical/USER%40gmail.com/public/basic.ics
-```
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `IMMICH_URL` | yes | — | Base URL of the Immich instance |
+| `IMMICH_API_KEY` | yes | — | Immich API key (Profile → API Keys) — required scopes listed below |
+| `CALDAV_URL` | yes | — | CalDAV collection URL or plain `.ics` URL |
+| `CALDAV_USERNAME` | no | `""` | Basic-auth username for CalDAV |
+| `CALDAV_PASSWORD` | no | `""` | Basic-auth password for CalDAV |
+| `CALDAV_API_KEY` | no | `""` | Bearer-token API key for CalDAV (alternative to username/password) |
+| `LOOKBACK_DAYS` | no | `7` | Days back from today to search for calendar events |
+| `PHOTO_ASSIGN_MAX_DAYS` | no | `5` | Max days after an event start a photo may still be assigned to it |
+| `SCHEDULE_INTERVAL` | no | `3600` | Seconds between sync runs |
+| `TZ` | no | `UTC` | IANA timezone for all date comparisons |
+
+> **Write-back** (appending Immich share links to calendar events) is enabled automatically when `CALDAV_USERNAME`+`CALDAV_PASSWORD` **or** `CALDAV_API_KEY` are non-empty.
+
+> **Immich API key scopes** — the key must have all of the following scopes enabled (Profile → API Keys → edit):
+> `asset.read`, `album.read`, `album.create`, `albumAsset.create`, `sharedLink.read`, `sharedLink.create`
+>
+> If `asset.read` is missing the service will still run — albums are created and share links are written back — but steps 4–5 (photo assignment) will be skipped and a warning will be logged each cycle.
 
 ---
 
@@ -126,7 +149,6 @@ This gives anyone with access to the calendar a direct link to view or upload ph
 immich-calendar-album/
 ├── Dockerfile                        # two-stage Python 3.14 / Alpine / uv build
 ├── docker-compose.yml
-├── .env.example                      # documented variable reference
 ├── pyproject.toml                    # uv-managed project + dependencies
 ├── uv.lock                           # pinned dependency lockfile
 └── src/
