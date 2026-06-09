@@ -2,8 +2,15 @@ services:
   immich-calendar-album:
     build: .
     restart: unless-stopped
-    env_file: .env
-    # Alternatively, override individual variables here:
-    # environment:
-    #   - IMMICH_URL=https://immich.example.com
-    #   - TZ=Europe/Berlin
+    # Alternatively use env file
+    # env_file: .env
+    environment:
+      - TZ=Europe/Berlin
+      - IMMICH_URL=https://immich.example.com
+      - IMMICH_API_KEY=your-immich-api-key
+      - CALDAV_URL=https://cloud.example.com/remote.php/dav/calendars/user/personal/
+      - CALDAV_USERNAME=your-caldav-username
+      - CALDAV_PASSWORD=your-caldav-password
+      - LOOKBACK_DAYS=7
+      - PHOTO_ASSIGN_MAX_DAYS=5
+      - SCHEDULE_INTERVAL=3600
