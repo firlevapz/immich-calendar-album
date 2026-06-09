@@ -1,11 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# Builder stage – install deps with uv inside the project venv
+# Builder stage – compile/install deps with uv on Alpine/musl
 # ---------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.14-alpine AS builder
 
-# Copy the uv binary from the official image (avoids a separate pip install).
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -14,7 +13,18 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies first (cached layer – only re-runs when lock file changes).
+# Build-time tools needed as a fallback when a package has no musllinux wheel
+# and must be compiled from source (e.g. lxml, cryptography).
+# These are NOT copied to the final image.
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    libxml2-dev \
+    libxslt-dev
+
+# Install Python dependencies first (cached layer – only re-runs when the
+# lock file or pyproject.toml changes, not on every source edit).
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
@@ -28,24 +38,28 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 # ---------------------------------------------------------------------------
-# Final runtime stage – no uv, no build tools
+# Runtime stage – minimal Alpine, no compiler toolchain
 # ---------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm
+FROM python:3.14-alpine
 
-# Non-root user for security.
-RUN groupadd --system --gid 999 appuser \
- && useradd  --system --gid 999 --uid 999 --no-create-home appuser
+# libgcc  : provides libgcc_s.so.1, required at runtime by pydantic-core and
+#           qh3 (both Rust/C extensions that link against it).
+# ca-certificates : system trust store for outgoing HTTPS connections.
+RUN apk add --no-cache \
+    libgcc \
+    ca-certificates
+
+# Non-root user (Alpine busybox addgroup/adduser syntax).
+RUN addgroup -S appuser \
+ && adduser  -S -G appuser -H appuser
 
 WORKDIR /app
 
 # Bring the fully-populated venv and application source from the builder.
 COPY --from=builder --chown=appuser:appuser /app /app
 
-# Put the venv on PATH.
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Respect TZ at runtime (set via docker-compose env or env_file).
-ENV TZ=UTC
+ENV PATH="/app/.venv/bin:$PATH" \
+    TZ=UTC
 
 USER appuser
 

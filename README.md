@@ -124,7 +124,7 @@ This gives anyone with access to the calendar a direct link to view or upload ph
 
 ```
 immich-calendar-album/
-├── Dockerfile                        # two-stage Python 3.14 / uv build
+├── Dockerfile                        # two-stage Python 3.14 / Alpine / uv build
 ├── docker-compose.yml
 ├── .env.example                      # documented variable reference
 ├── pyproject.toml                    # uv-managed project + dependencies
