@@ -44,6 +44,7 @@ class CalendarEvent:
     uid: str
     summary: str
     start: date  # always a plain date (time stripped); tz-normalised
+    end: date    # inclusive end date; equals start for single-day / instant events
     href: str | None  # CalDAV object URL, None when obtained via plain ICS fetch
 
 
@@ -338,14 +339,63 @@ class CalendarClient:
 
         start_val = dtstart.dt
         if isinstance(start_val, datetime):
-            # Normalise to the configured timezone, then extract the date.
+            # Timed event: normalise to configured TZ, then extract the date.
             if start_val.tzinfo is None:
                 start_val = start_val.replace(tzinfo=self._tz)
-            start_date = start_val.astimezone(self._tz).date()
+            start_dt: datetime = start_val.astimezone(self._tz)
+            start_date: date = start_dt.date()
+            is_all_day = False
         elif isinstance(start_val, date):
+            # All-day event: DTSTART is a plain date; synthesise a midnight
+            # datetime only so _compute_end_date can handle DURATION correctly.
             start_date = start_val
+            start_dt = datetime.combine(start_val, datetime.min.time(), tzinfo=self._tz)
+            is_all_day = True
         else:
-            log.debug("Skipping event %r: unrecognised DTSTART type %s", summary, type(start_val))
+            log.debug(
+                "Skipping event %r: unrecognised DTSTART type %s",
+                summary, type(start_val),
+            )
             return None
 
-        return CalendarEvent(uid=uid, summary=summary, start=start_date, href=href)
+        end_date = self._compute_end_date(component, start_dt, start_date, is_all_day)
+        return CalendarEvent(uid=uid, summary=summary, start=start_date, end=end_date, href=href)
+
+    def _compute_end_date(
+        self,
+        component: Event,
+        start_dt: datetime,   # tz-aware; used only for timed+DURATION path
+        start_date: date,
+        is_all_day: bool,
+    ) -> date:
+        """Return the **inclusive** end date for a VEVENT component.
+
+        iCal all-day DTEND is exclusive (the day *after* the last day), so we
+        subtract one day to convert it to an inclusive bound.  Timed DTEND is
+        converted to a plain date in the configured timezone.  DURATION is
+        expanded to an absolute end date.  If neither is present the event is
+        treated as a single-day / instant event (end == start).
+        """
+        dtend = component.get("DTEND")
+        if dtend is not None:
+            val = dtend.dt
+            if isinstance(val, datetime):
+                if val.tzinfo is None:
+                    val = val.replace(tzinfo=self._tz)
+                return val.astimezone(self._tz).date()
+            elif isinstance(val, date):
+                # All-day: DTEND is exclusive → subtract one day for inclusive end
+                return max(val - timedelta(days=1), start_date)
+
+        duration_prop = component.get("DURATION")
+        if duration_prop is not None:
+            dur: timedelta = duration_prop.dt
+            if is_all_day:
+                # All-day DURATION is in whole days; treat as exclusive → subtract 1
+                end = start_date + timedelta(days=max(0, dur.days - 1))
+                return max(end, start_date)
+            else:
+                return (start_dt + dur).astimezone(self._tz).date()
+
+        # No DTEND and no DURATION: single-day or instant event
+        return start_date

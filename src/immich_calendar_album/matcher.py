@@ -4,7 +4,12 @@ Matching rule
 -------------
 A photo with capture date P is assigned to event E when:
 
-    E.start <= P  AND  P <= E.start + max_days
+    E.start <= P <= E.end
+
+where ``E.end`` is the **inclusive** end date extracted from the calendar
+event's DTEND (or DURATION).  For all-day events this covers every day of the
+event; for timed events it spans from the start date to the date of the end
+time in the configured timezone.
 
 If multiple events satisfy the condition the one with the **latest** start date
 wins (the photo "belongs" to the most recent preceding event).
@@ -20,7 +25,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -41,7 +46,6 @@ def match_assets(
     assets: list["ImmichAsset"],
     events: list["CalendarEvent"],
     event_album_map: dict[str, str],  # event.uid -> album_id
-    max_days: int,
 ) -> MatchResult:
     """Assign each asset to the best-matching album.
 
@@ -53,9 +57,6 @@ def match_assets(
         Calendar events (already filtered to the lookback window).
     event_album_map:
         Maps each event UID to its Immich album ID.
-    max_days:
-        Maximum number of days *after* an event start that a photo may still
-        be assigned to that event.
 
     Returns
     -------
@@ -63,10 +64,9 @@ def match_assets(
         ``assignments`` maps album_id → [asset_id, …].
         ``unmatched`` contains asset IDs that could not be matched.
     """
-    # Sort events by start date descending so we can iterate and find the
-    # most recent qualifying event efficiently.
+    # Sort events by start date descending so the first qualifying match is
+    # always the most recent event whose window contains the photo date.
     sorted_events = sorted(events, key=lambda e: e.start, reverse=True)
-    delta = timedelta(days=max_days)
 
     result = MatchResult()
 
@@ -75,10 +75,8 @@ def match_assets(
         best_event = None
 
         for event in sorted_events:
-            e_start: date = event.start
-            if e_start <= p <= e_start + delta:
-                # Because events are sorted desc by start, the first match is
-                # the most recent qualifying event.
+            if event.start <= p <= event.end:
+                # sorted desc by start → first match is the most recent event
                 best_event = event
                 break
 

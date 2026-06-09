@@ -26,14 +26,13 @@ class Config(BaseSettings):
 
     # --- Behaviour ---
     lookback_days: int = 7
-    photo_assign_max_days: int = 5
     schedule_interval: int = 3600  # seconds between runs
 
     # --- Timezone ---
     # Honour the standard TZ environment variable; default to UTC.
     tz: str = "UTC"
 
-    @field_validator("lookback_days", "photo_assign_max_days", "schedule_interval")
+    @field_validator("lookback_days", "schedule_interval")
     @classmethod
     def must_be_positive(cls, v: int) -> int:
         if v <= 0:

@@ -14,13 +14,21 @@ On each run the service performs five steps:
 2. **Ensure albums exist** — for every event with a title, creates an Immich album named after that title. If the album already exists it is reused.
 3. **Write share links back** *(optional)* — if CalDAV write credentials are provided, creates a public upload-enabled Immich share link for each album and appends it to the corresponding calendar event's description. The operation is idempotent: it is skipped if the link is already present.
 4. **Fetch unassigned assets** — retrieves all Immich photos/videos that are not yet part of any album.
-5. **Match and assign** — assigns each unassigned asset to the album whose event start date is the closest earlier date relative to the photo's capture date, within a configurable window (default: 5 days). Photos outside every event window are left unassigned.
+5. **Match and assign** — assigns each unassigned asset to the album whose event window contains the photo's capture date (`event.start ≤ photo.date ≤ event.end`). For all-day events every day of the event is included. Photos outside every event window are left unassigned.
 
 ### Matching rule
 
 ```
-event.start  ≤  photo.date  ≤  event.start + PHOTO_ASSIGN_MAX_DAYS
+event.start  ≤  photo.date  ≤  event.end
 ```
+
+`event.end` is derived from the calendar event's `DTEND` or `DURATION`:
+
+| Event type | `event.end` |
+|---|---|
+| All-day, single day (e.g. a birthday) | same as `event.start` |
+| All-day, multi-day (e.g. a holiday) | last day of the event (inclusive) |
+| Timed event | date of the end time in the configured timezone |
 
 When multiple events qualify (overlapping windows), the most recent event wins. Photos that do not fall within any event window are never forcibly assigned.
 
@@ -89,11 +97,6 @@ CALDAV_PASSWORD=your-caldav-password
 # How many days back to look for calendar events
 LOOKBACK_DAYS=7
 
-# Max days *after* an event's start date a photo may still be assigned to it.
-# A photo taken on the same day as the event, or up to this many days later,
-# will be placed in that event's album.
-PHOTO_ASSIGN_MAX_DAYS=5
-
 # Seconds between sync runs (3600 = 1 hour)
 SCHEDULE_INTERVAL=3600
 
@@ -114,7 +117,6 @@ TZ=UTC
 | `CALDAV_PASSWORD` | no | `""` | Basic-auth password for CalDAV |
 | `CALDAV_API_KEY` | no | `""` | Bearer-token API key for CalDAV (alternative to username/password) |
 | `LOOKBACK_DAYS` | no | `7` | Days back from today to search for calendar events |
-| `PHOTO_ASSIGN_MAX_DAYS` | no | `5` | Max days after an event start a photo may still be assigned to it |
 | `SCHEDULE_INTERVAL` | no | `3600` | Seconds between sync runs |
 | `TZ` | no | `UTC` | IANA timezone for all date comparisons |
 
